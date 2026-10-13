@@ -37,8 +37,27 @@ def compute_gradients(hours, predictions, actual):
     return np.mean(errors * hours), np.mean(errors)
 
 
-predictions = predict(hours, weight, bias)
-print(predictions)
-print(f"Loss: {binary_cross_entropy(predictions, passed):.4f}")
-gw, gb = compute_gradients(hours, predictions, passed)
-print(f"Gradient weight: {gw}, Gradient bias: {gb}")
+# TRAINING LOOP
+learning_rate = 0.1
+epochs = 20000
+
+for epoch in range(epochs):
+    predictions = predict(hours, weight, bias)
+    loss = binary_cross_entropy(predictions, passed)
+    gw, gb = compute_gradients(hours, predictions, passed)
+
+    weight = weight - learning_rate * gw
+    bias = bias - learning_rate * gb
+
+    # printed loss is from BEFORE this epoch's update, same lag as Tier 1
+    if epoch < 3 or epoch % 100 == 0:
+        print(
+            f"Epoch {epoch}: loss = {loss:.4f}, "
+            f"weight = {weight:.4f}, bias = {bias:.4f}"
+        )
+
+final_loss = binary_cross_entropy(predict(hours, weight, bias), passed)
+print(f"Final: weight = {weight:.4f}, bias = {bias:.4f}, loss = {final_loss:.4f}")
+
+# the model's 50/50 point: where w*x + b = 0, so sigmoid outputs 0.5
+print(f"Decision boundary: {-bias / weight:.2f} hours")
