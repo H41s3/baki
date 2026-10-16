@@ -16,4 +16,5 @@ learning_rate = 0.1
 
 
 def sigmoid(z):
-    pass
+    """Squash any real number into (0, 1)."""
+    return 1 / (1 + np.exp(-z))
