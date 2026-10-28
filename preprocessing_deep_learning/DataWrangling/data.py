@@ -1,5 +1,6 @@
 # Load libraries
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -12,12 +13,14 @@ DEFAULT_CSV_PATH = Path(__file__).resolve().parent / "marvel-wikia-data.csv"
 # Columns the bodycount transformation depends on
 REQUIRED_COLUMNS = ("name",)
 
+logger = logging.getLogger(__name__)
+
 
 class MissingColumnsError(ValueError):
     """Raised when the csv is missing columns the transformation needs."""
 
 
-def validate_columns(dataframe, required=REQUIRED_COLUMNS):
+def validate_columns(dataframe: pd.DataFrame, required=REQUIRED_COLUMNS) -> None:
     # Fail early with a clear message instead of a bare KeyError mid-transform
     missing = [col for col in required if col not in dataframe.columns]
     if not missing:
@@ -39,7 +42,7 @@ def validate_columns(dataframe, required=REQUIRED_COLUMNS):
     raise MissingColumnsError(message)
 
 
-def load_data(path=DEFAULT_CSV_PATH):
+def load_csv(path: str | Path = DEFAULT_CSV_PATH) -> pd.DataFrame:
     # Load the local csv file, failing early with a clear message if it's missing
     path = Path(path)
     if not path.is_file():
@@ -50,20 +53,34 @@ def load_data(path=DEFAULT_CSV_PATH):
     return pd.read_csv(path)
 
 
-def add_bodycount(dataframe):
+def add_bodycount(
+    dataframe: pd.DataFrame,
+    match: str = "Peter Parker",
+    hit: int = 3,
+    miss: int = 0,
+) -> pd.DataFrame:
     # Create the column conditionally:
-    # IF the name contains 'Peter Parker', set it to 3.
-    # ELSE (for everyone else), set it to 0.
-    # Works on a copy so the caller's DataFrame is left untouched.
+    # IF the name contains `match` (literal substring), set it to `hit`.
+    # ELSE (for everyone else), set it to `miss`.
+    # Pure: works on a copy so the caller's DataFrame is left untouched,
+    # and needs no file on disk, so it can be tested with an in-memory frame.
     validate_columns(dataframe)
     dataframe = dataframe.copy()
     dataframe["bodycount"] = np.where(
-        dataframe["name"].str.contains("Peter Parker", na=False), 3, 0
+        dataframe["name"].str.contains(match, regex=False, na=False), hit, miss
     )
     return dataframe
 
 
-def main(argv=None):
+def bodycount_preview(dataframe, n=5):
+    # Return the slices used to sanity-check the transform, leaving display to the caller:
+    # Peter Parker's row(s) (should be 3) and the first n rows (mostly 0).
+    columns = ["name", "bodycount"]
+    peter_parker = dataframe[dataframe["name"].str.contains("Peter Parker", na=False)][columns]
+    return peter_parker, dataframe[columns].head(n)
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Add a bodycount column to the Marvel data.")
     parser.add_argument(
         "--csv",
@@ -71,25 +88,25 @@ def main(argv=None):
         default=DEFAULT_CSV_PATH,
         help=f"path to marvel-wikia-data.csv (default: {DEFAULT_CSV_PATH})",
     )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="logging verbosity; use WARNING or higher to suppress the preview (default: INFO)",
+    )
     args = parser.parse_args(argv)
+    logging.basicConfig(level=args.log_level, format="%(message)s")
 
     try:
-        dataframe = add_bodycount(load_data(args.csv))
+        dataframe = add_bodycount(load_csv(args.csv))
     except (FileNotFoundError, MissingColumnsError) as err:
         sys.exit(f"error: {err}")
 
-    # Let's verify it worked:
-    # 1. Print Peter Parker's row to see his '3'
-    print("--- Peter Parker's Row ---")
-    print(
-        dataframe[dataframe["name"].str.contains("Peter Parker", na=False)][
-            ["name", "bodycount"]
-        ]
-    )
-
-    # 2. Print the first 5 rows to see that others are '0'
-    print("\n--- First 5 Rows ---")
-    print(dataframe[["name", "bodycount"]].head(5))
+    # Let's verify it worked: Peter Parker should have a '3', others a '0'
+    if logger.isEnabledFor(logging.INFO):
+        peter_parker, head = bodycount_preview(dataframe)
+        logger.info("--- Peter Parker's Row ---\n%s", peter_parker.to_string())
+        logger.info("--- First 5 Rows ---\n%s", head.to_string())
 
 
 if __name__ == "__main__":
